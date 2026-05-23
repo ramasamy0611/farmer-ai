@@ -4,13 +4,14 @@ Uses price data from price_fetcher and OpenAI for natural language advice.
 """
 
 import os
-from openai import OpenAI
+import requests
 from dotenv import load_dotenv
 from src.price_fetcher import fetch_prices, get_all_market_prices
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
 SYSTEM_PROMPT = """நீங்கள் ஒரு விவசாய ஆலோசகர். தமிழ்நாட்டு விவசாயிகளுக்கு சந்தை விலை தகவல்களை வைத்து 
 விற்கலாமா அல்லது காத்திருக்கலாமா என்று எளிய தமிழில் ஆலோசனை கூறுங்கள்.
@@ -52,17 +53,13 @@ def get_advisory(commodity: str, market: str = None) -> dict:
         f"விற்க வேண்டும் என்றால் 'விற்கவும்', காத்திருக்க வேண்டும் என்றால் 'காத்திருக்கவும்' என்று தெளிவாக சொல்லுங்கள்."
     )
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
-        max_tokens=200,
-        temperature=0.3,
-    )
-
-    advice = response.choices[0].message.content.strip()
+    response = requests.post(OLLAMA_URL, json={
+        "model": OLLAMA_MODEL,
+        "prompt": SYSTEM_PROMPT + "\n\n" + user_message,
+        "stream": False,
+    }, timeout=60)
+    response.raise_for_status()
+    advice = response.json()["response"].strip()
     action = "sell" if "விற்கவும்" in advice else "hold"
 
     return {
